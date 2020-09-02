@@ -1,5 +1,13 @@
 import React, { createElement, useRef, useState } from 'react';
 
+const DefaultHeader = ({ columnIndex, style }) => (
+  <div
+    style={style}
+  >
+    H: {columnIndex}
+  </div>
+);
+
 export function Grid (props) {
   const {
     className,
@@ -15,6 +23,10 @@ export function Grid (props) {
     estimatedRowHeight = 50,
     estimatedColumnWidth = 50,
     children,
+    headerHeight = 50,
+    headerData = [],
+    headerKey = ({ columnIndex }) => headerData[columnIndex],
+    headerRender = DefaultHeader
   } = props
   const outerRef = useRef()
   const innerRef = useRef()
@@ -198,6 +210,24 @@ export function Grid (props) {
     return style
   }
 
+  function getHeaderItemStyle (columnIndex) {
+    let style
+    let key = `h:${columnIndex}`
+    if (itemStyleCache[key]) {
+      style = itemStyleCache[key]
+    } else {
+      let columnData = getMetedata('column', columnIndex)
+      itemStyleCache[key] = style = {
+        position: 'absolute',
+        top: 0,
+        height: headerHeight,
+        left: columnData.offset,
+        width: columnData.size
+      }
+    }
+    return style
+  }
+
   const [rowStartIndex, rowStopIndex] = getVerticalRangeToRender()
   const [columnStartIndex, columnStopIndex] = getHorizontalRangeToRender()
 
@@ -215,6 +245,20 @@ export function Grid (props) {
         })
       )
     }
+  }
+
+  const headerItems = []
+
+  for (let columnIndex = columnStartIndex; columnIndex <= columnStopIndex; columnIndex++) {
+    headerItems.push(
+      createElement(headerRender, {
+        columnIndex,
+        isScrolling,
+        data: headerData[columnIndex],
+        key: headerKey[columnIndex],
+        style: getHeaderItemStyle(columnIndex),
+      })
+    )
   }
 
   function getEstimatedTotalSize (type) {
@@ -253,21 +297,36 @@ export function Grid (props) {
       onScroll,
       style: {
         position: 'relative',
-        height,
+        height: height + headerHeight,
         width,
         overflow: 'auto',
         WebkitOverflowScrolling: 'touch',
         willChange: 'transform',
       }
     },
-    createElement('div', {
-      children: items,
-      ref: innerRef,
-      style: {
-        height: estimatedTotalHeight,
-        pointerEvents: isScrolling ? 'none' : undefined,
-        width: estimatedTotalWidth,
-      }
-    })
+    [
+      createElement('div', {
+        children: headerItems,
+        style: {
+          position: 'sticky',
+          top: 0,
+          height: headerHeight,
+          width: estimatedTotalWidth,
+          borderBottom: '1px solid #000',
+          zIndex: 10
+        }
+      }),
+      createElement('div', {
+        children: items,
+        ref: innerRef,
+        style: {
+          position: 'absolute',
+          top: headerHeight,
+          height: estimatedTotalHeight,
+          pointerEvents: isScrolling ? 'none' : undefined,
+          width: estimatedTotalWidth,
+        }
+      })
+    ]
   )
 }

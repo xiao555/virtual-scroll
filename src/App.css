@@ -13,7 +13,8 @@ h1 {
 }
 
 .GridItemEven,
-.GridItemOdd {
+.GridItemOdd,
+.GridHeaderItem {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -21,4 +22,8 @@ h1 {
 
 .GridItemEven {
   background-color: #f8f8f0;
+}
+
+.GridHeaderItem {
+  background-color: #fff;
 }
