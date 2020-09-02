@@ -1,67 +1,95 @@
 import React, { createElement, useRef, useState } from 'react';
 
 export function Grid (props) {
-  console.log(props)
   const {
     className,
     height,
     width,
     rowCount,
+    columnCount,
     getHeight,
-    itemKey = ({ rowIndex }) => rowIndex,
+    getWidth,
+    itemKey = ({ rowIndex, columnIndex }) => `${rowIndex}:${columnIndex}`,
     overscanForward = 10,
     overscanBackward = 10,
     estimatedRowHeight = 50,
+    estimatedColumnWidth = 50,
     children,
   } = props
   const outerRef = useRef()
   const innerRef = useRef()
   const [isScrolling, setIsScrolling] = useState(false)
   const [scrollTop, setScrollTop] = useState(0)
-  const [metadataMap, setMetadataMap] = useState({})
-  const [lastMeasuredIndex, setLastMeasuredIndex] = useState(-1)
-  const [itemStyleCache, setItemStyleCache] = useState({})
+  const [scrollLeft, setScrollLeft] = useState(0)
+  const [rowMetadataMap] = useState({})
+  const [columnMetadataMap] = useState({})
+  const lastMeasuredRowIndex = useRef(-1)
+  const lastMeasuredColumnIndex = useRef(-1)
+  const [itemStyleCache] = useState({})
 
   function onScroll (event) {
     const {
       clientHeight,
+      clientWidth,
       scrollTop: targetScrollTop,
+      scrollLeft: targetScrollLeft,
       scrollHeight,
+      scrollWidth,
     } = event.currentTarget;
-    if (targetScrollTop === scrollTop) return
+    if (targetScrollTop === scrollTop && targetScrollLeft === scrollLeft) return
+
     setIsScrolling(true)
     setScrollTop(Math.max(
       0,
       Math.min(targetScrollTop, scrollHeight - clientHeight)
     ))
+    setScrollLeft(Math.max(
+      0,
+      Math.min(targetScrollLeft, scrollWidth - clientWidth)
+    ))
   }
 
-  function getMetedata (index) {
+  function getMetedata (type, index) {
+    let lastMeasuredIndex, metadataMap, itemSize
+    if (type === 'column') {
+      lastMeasuredIndex = lastMeasuredColumnIndex.current
+      metadataMap = columnMetadataMap
+      itemSize = getWidth
+    } else {
+      lastMeasuredIndex = lastMeasuredRowIndex.current
+      metadataMap = rowMetadataMap
+      itemSize = getHeight
+    }
+
     if (index > lastMeasuredIndex) {
       let offset = 0
       if (lastMeasuredIndex >= 0) {
         const item = metadataMap[lastMeasuredIndex]
-        offset += item.offset + item.height
+        offset += item.offset + item.size
       }
 
       for (let i = lastMeasuredIndex + 1; i <= index; i++) {
-        let height = getHeight(i)
+        let size = itemSize(i)
         metadataMap[i] = {
           offset: offset,
-          height
+          size
         }
-        offset += height
+        offset += size
       }
-      setLastMeasuredIndex(index)
+      if (type === 'column') {
+        lastMeasuredColumnIndex.current = index
+      } else {
+        lastMeasuredRowIndex.current = index
+      }
     }
 
     return metadataMap[index]
   }
 
-  function findNearestItemBinarySearch (low, high, target) {
+  function findNearestItemBinarySearch (type, low, high, target) {
     while (low <= high) {
       let mid = low + ~~((high - low) >> 1)
-      let offset = getMetedata(mid).offset
+      let offset = getMetedata(type, mid).offset
       if (offset === target) {
         return mid
       } else if (offset > target) {
@@ -74,45 +102,67 @@ export function Grid (props) {
     return low > 0 ? low - 1 : 0
   }
 
-  function findNearestItemExponentialSearch (index, target) {
+  function findNearestItemExponentialSearch (type, index, target) {
+    let itemCount = type === 'column' ? columnCount : rowCount
     let interval = 1
     while (
-      index < rowCount &&
-      getMetedata(index).offset < target
+      index < itemCount &&
+      getMetedata(type, index).offset < target
     ) {
       index += interval
       interval *= 2
     }
 
-    return findNearestItemBinarySearch(~~(index/2), Math.min(index, rowCount - 1), target)
+    return findNearestItemBinarySearch(type, ~~(index/2), Math.min(index, rowCount - 1), target)
   }
 
-  function getRowStartIndexForOffset () {
+  function getStartIndexForOffset (type, offset) {
+    let lastMeasuredIndex, metadataMap
+    if (type === 'column') {
+      lastMeasuredIndex = lastMeasuredColumnIndex.current
+      metadataMap = columnMetadataMap
+    } else {
+      lastMeasuredIndex = lastMeasuredRowIndex.current
+      metadataMap = rowMetadataMap
+    }
     const lastMeasuredItemOffset =
       lastMeasuredIndex > 0 ? metadataMap[lastMeasuredIndex].offset : 0;
 
-    if (lastMeasuredItemOffset > scrollTop) {
-      return findNearestItemBinarySearch(0, lastMeasuredIndex, scrollTop)
+    if (lastMeasuredItemOffset > offset) {
+      return findNearestItemBinarySearch(type, 0, lastMeasuredIndex, offset)
     } else {
-      return findNearestItemExponentialSearch(Math.max(0, lastMeasuredIndex), scrollTop)
+      return findNearestItemExponentialSearch(type, Math.max(0, lastMeasuredIndex), offset)
     }
   }
 
   function getRowStopIndexForStartIndex (startIndex) {
     let maxHeight = scrollTop + props.height
     let stopIndex = startIndex
-    let data = getMetedata(stopIndex)
-    let height = data.offset + data.height
+    let data = getMetedata('row', stopIndex)
+    let height = data.offset + data.size
 
     while (stopIndex < rowCount - 1 && height < maxHeight) {
       stopIndex++
-      height += getMetedata(stopIndex).height
+      height += getMetedata('row', stopIndex).size
+    }
+    return stopIndex
+  }
+
+  function getColumnStopIndexForStartIndex (startIndex) {
+    let maxWidth = scrollLeft + props.width
+    let stopIndex = startIndex
+    let data = getMetedata('column', stopIndex)
+    let width = data.offset + data.size
+
+    while (stopIndex < columnCount - 1 && width < maxWidth) {
+      stopIndex++
+      width += getMetedata('column', stopIndex).size
     }
     return stopIndex
   }
 
   function getVerticalRangeToRender () {
-    const startIndex = getRowStartIndexForOffset()
+    const startIndex = getStartIndexForOffset('row', scrollTop)
     const stopIndex = getRowStopIndexForStartIndex(startIndex)
     return [
       Math.max(0, startIndex - overscanBackward),
@@ -120,51 +170,81 @@ export function Grid (props) {
     ]
   }
 
-  function getItemStyle (rowIndex) {
+  function getHorizontalRangeToRender () {
+    const startIndex = getStartIndexForOffset('column', scrollLeft)
+    const stopIndex = getColumnStopIndexForStartIndex(startIndex)
+    return [
+      Math.max(0, startIndex - overscanBackward),
+      Math.max(0, Math.min(columnCount - 1, stopIndex + overscanForward)),
+    ]
+  }
+
+  function getItemStyle (rowIndex, columnIndex) {
     let style
-    if (itemStyleCache[rowIndex]) {
-      style = itemStyleCache[rowIndex]
+    let key = `${rowIndex}:${columnIndex}`
+    if (itemStyleCache[key]) {
+      style = itemStyleCache[key]
     } else {
-      let data = getMetedata(rowIndex)
-      itemStyleCache[rowIndex] = style = {
+      let rowData = getMetedata('row', rowIndex)
+      let columnData = getMetedata('column', columnIndex)
+      itemStyleCache[key] = style = {
         position: 'absolute',
-        top: data.offset,
-        height: data.height
+        top: rowData.offset,
+        height: rowData.size,
+        left: columnData.offset,
+        width: columnData.size
       }
     }
     return style
   }
 
-  const [startIndex, stopIndex] = getVerticalRangeToRender()
+  const [rowStartIndex, rowStopIndex] = getVerticalRangeToRender()
+  const [columnStartIndex, columnStopIndex] = getHorizontalRangeToRender()
 
   const items = []
 
-  for (let rowIndex = startIndex; rowIndex <= stopIndex; rowIndex++) {
-    items.push(
-      createElement(children, {
-        rowIndex,
-        isScrolling,
-        key: itemKey({ rowIndex }),
-        style: getItemStyle(rowIndex),
-      })
-    )
+  for (let rowIndex = rowStartIndex; rowIndex <= rowStopIndex; rowIndex++) {
+    for (let columnIndex = columnStartIndex; columnIndex <= columnStopIndex; columnIndex++) {
+      items.push(
+        createElement(children, {
+          rowIndex,
+          columnIndex,
+          isScrolling,
+          key: itemKey({ rowIndex, columnIndex }),
+          style: getItemStyle(rowIndex, columnIndex),
+        })
+      )
+    }
   }
 
-  function getEstimatedTotalHeight () {
-    let totalSizeOfMeasuredRows = 0
+  function getEstimatedTotalSize (type) {
+    let lastMeasuredIndex, metadataMap, itemCount, estimatedSize
+    if (type === 'column') {
+      lastMeasuredIndex = lastMeasuredColumnIndex.current
+      metadataMap = columnMetadataMap
+      itemCount = columnCount
+      estimatedSize = estimatedColumnWidth
+    } else {
+      lastMeasuredIndex = lastMeasuredRowIndex.current
+      metadataMap = rowMetadataMap
+      itemCount = rowCount
+      estimatedSize = estimatedRowHeight
+    }
+    let totalSizeOfMeasured = 0
 
     if (lastMeasuredIndex >=0) {
       const item = metadataMap[lastMeasuredIndex]
-      totalSizeOfMeasuredRows = item.offset + item.height
+      totalSizeOfMeasured = item.offset + item.size
     }
 
-    const numUnmeasuredItems = rowCount - lastMeasuredIndex - 1
-    const totalSizeOfUnmeasuredItems = numUnmeasuredItems * estimatedRowHeight
+    const numUnmeasuredItems = itemCount - lastMeasuredIndex - 1
+    const totalSizeOfUnmeasuredItems = numUnmeasuredItems * estimatedSize
 
-    return totalSizeOfMeasuredRows + totalSizeOfUnmeasuredItems
+    return totalSizeOfMeasured + totalSizeOfUnmeasuredItems
   }
 
-  const estimatedTotalHeight = getEstimatedTotalHeight()
+  const estimatedTotalHeight = getEstimatedTotalSize('row')
+  const estimatedTotalWidth = getEstimatedTotalSize('column')
 
   return createElement('div',
     {
@@ -186,6 +266,7 @@ export function Grid (props) {
       style: {
         height: estimatedTotalHeight,
         pointerEvents: isScrolling ? 'none' : undefined,
+        width: estimatedTotalWidth,
       }
     })
   )

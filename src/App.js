@@ -48,7 +48,7 @@ function App() {
       <MyGrid
         className='react-window-wrapper'
         columnCount={1000}
-        columnWidth={index => columnWidths[index]}
+        getWidth={index => columnWidths[index]}
         height={400}
         rowCount={10000}
         getHeight={index => rowHeights[index]}
