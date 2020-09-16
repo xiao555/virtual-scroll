@@ -125,7 +125,7 @@ export function Grid (props) {
       interval *= 2
     }
 
-    return findNearestItemBinarySearch(type, ~~(index/2), Math.min(index, rowCount - 1), target)
+    return findNearestItemBinarySearch(type, ~~(index/2), Math.min(index, itemCount - 1), target)
   }
 
   function getStartIndexForOffset (type, offset) {
