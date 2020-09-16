@@ -3,8 +3,6 @@ import { VariableSizeGrid as Grid } from 'react-window';
 import { Grid as MyGrid } from './grid'
 import './App.css'
 
-// These item sizes are arbitrary.
-// Yours should be based on the content of the item.
 const columnWidths = new Array(1000)
   .fill(true)
   .map(() => 75 + Math.round(Math.random() * 50));
